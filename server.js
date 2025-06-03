@@ -15,7 +15,7 @@ io.on('connection', (socket) => {
   socket.on('datos_usuario', (data) => {
     usuariosActivos[socket.id] = {
       ...data,
-      hora: new Date().toLocaleTimeString(),
+      conectadoDesde: Date.now(),
       ultimaActualizacion: Date.now()
     };
 
