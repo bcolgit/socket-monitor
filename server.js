@@ -1,25 +1,49 @@
-const socket = io("https://socket-monitor.onrender.com");
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
-// Cuando llega la lista completa
-socket.on("actualizar_usuarios", function(lista) {
-  const contenedor = document.getElementById("usuarios-activos");
-  contenedor.innerHTML = ''; // limpiar antes de repintar
+const usuariosActivos = {}; // socket.id -> usuario
 
-  lista.forEach(data => {
-    const item = document.createElement("li");
-    item.className = "list-group-item d-flex flex-column";
+io.on('connection', (socket) => {
+  console.log('🔌 Cliente conectado:', socket.id);
 
-    item.innerHTML = `
-      <div><strong>IP:</strong> 🌐 ${data.ip}</div>
-      <div><strong>País:</strong> 🌍 ${data.pais}</div>
-      <div><strong>Navegador:</strong> 🧭 ${data.navegador}</div>
-      <div><strong>Página:</strong> 📄 <a href="${data.pagina}" target="_blank">${data.pagina}</a></div>
-      <div><strong>Hora:</strong> 🕒 ${data.hora}</div>
-    `;
+  socket.on('datos_usuario', (data) => {
+    usuariosActivos[socket.id] = {
+      ...data,
+      hora: new Date().toLocaleTimeString(),
+      ultimaActualizacion: Date.now()
+    };
 
-    contenedor.appendChild(item);
+    io.emit('actualizar_usuarios', Object.values(usuariosActivos));
+  });
+
+  socket.on('disconnect', () => {
+    delete usuariosActivos[socket.id];
+    io.emit('actualizar_usuarios', Object.values(usuariosActivos));
+  });
+
+  socket.on('get_usuarios_activos', () => {
+    socket.emit('actualizar_usuarios', Object.values(usuariosActivos));
   });
 });
 
-// Pedir la lista al entrar
-socket.emit("get_usuarios_activos");
+// limpieza por inactividad (cada 10 seg)
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [id, user] of Object.entries(usuariosActivos)) {
+    if (ahora - user.ultimaActualizacion > 20000) {
+      delete usuariosActivos[id];
+    }
+  }
+  io.emit('actualizar_usuarios', Object.values(usuariosActivos));
+}, 10000);
+
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`Servidor Socket.IO escuchando en puerto ${PORT}`);
+});
